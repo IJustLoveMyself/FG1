@@ -251,23 +251,23 @@ def sock_server(q_socket):
 		print 'wait'
 		data, addr = s.recvfrom(1024)	
 		if data == '0':
-			a=350
+			times=350
 			while True:	
 				if not q_socket.empty():
 					buf = q_socket.get()
 					s.sendto(buf,addr)
-					a=a-1
+					times=times-1
 			#轮询检测接收，当有接受的时候i=1 退出循环，连接后UDP的发送不会超时，
 			#需要通过这种方法来检测客户端关闭，当客户端关闭，退出发送循环，重新等待客户端连接
-			rlist,wlist,elist=select.select([s],[],[],0)
-			for fd in rlist:
-				if fd == s:
-					data, addr = s.recvfrom(1024)
-			if data=='2':
-				a=350
-				data = '3'	
-			if data=='1' or a==0:
-				break
+				rlist,wlist,elist=select.select([s],[],[],0)
+				for fd in rlist:
+					if fd == s:
+						data, addr = s.recvfrom(1024)
+				if data=='2':
+					times=350
+					data = '3'	
+				if data=='1' or times==0:
+					break
 		s.close()
 	
 ##############socket通信，server端 TCP####################################################
