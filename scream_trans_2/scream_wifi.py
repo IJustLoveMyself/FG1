@@ -157,13 +157,15 @@ def data_recev(port0,port1,port3,q_socket):
 #							p=multiprocessing.Process(target=data_write,args=(data_buf_20_3,))
 #							p.start()
 #						times=0		
-#					
+#		
+#		print flag			
 		if(flag==0x111):
 			flag = 0
 			save_buf0=send_buf0.split("$")
 			save_buf1=send_buf1.split("$")
 #			sock_buf="S"+save_buf0[0]+save_buf1[0]+",P,"+save_buf0[1]+","+save_buf1[1]+",E,"+save_buf0[2]+save_buf1[2]+'M'+send_buf3+',+'"e\r\n"
 			sock_buf="S"+save_buf0[0]+save_buf1[0]+',M,'+send_buf3+','+"e\r\n"
+#			print sock_buf
 			if q_socket.empty() == True:
 				q_socket.put(sock_buf)
 		time.sleep(0.01)	
@@ -367,5 +369,6 @@ except (KeyboardInterrupt,AssertionError):
 	GPIO.cleanup(17)
 	GPIO.cleanup(22)
 	GPIO.cleanup(5)
-#	port1.write("stop")
-#	port0.write("stop")
+	port1.write("stop")
+	port0.write("stop")
+	port3.write("stop")
