@@ -307,7 +307,7 @@ def sock_server(q_socket):
 	
 	
 i=0
-ket_statue=True
+key_statue=True
 key_flag=False	 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(22,GPIO.OUT) #喇叭

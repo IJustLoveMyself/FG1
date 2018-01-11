@@ -6,16 +6,42 @@ import serial
 import datetime
 import multiprocessing
 import RPi.GPIO as GPIO
-import wifi_test
-import pywifi
+#import wifi_test
+#import pywifi
 import subprocess
 import os
 import sys
 import time 
 import struct
-import socket              
-#######################################陀螺仪数据和电机数据 UDP传输#########################################
+import socket      
+######################################输出三种传感器数据，没有电机数据#################################
 #######################################接收传感器数据，数据类型string########################################
+
+def uart_sensor_data(port):
+	rv_buf=""
+	ch=''
+	flag=0
+	i=0
+	while True:
+		ch=port.read()
+		if flag==2:
+			rv_buf+=ch
+			i=i+1			
+		if flag==1 and ch == chr(0x53):
+			flag=2
+			rv_buf+=ch
+			i=i+1
+		if flag ==1 and ch!=chr(0x53):
+			rv_buf=''
+			i=0
+			flag=0		
+		if flag==0 and ch == chr(0x55):
+			rv_buf+=ch
+			flag=1
+			i=i+1	
+		if i==11:
+			return rv_buf				
+
 def uart_rec_str(port):		
 	rv_buf=""
 	ch=''
@@ -104,20 +130,15 @@ def data_recev(port0,port1,port3,q_socket):
 	fd3=open("/dev/myuart3","r+")
 	fd1=open("/dev/myuart1","r+")
 	fd0=open("/dev/myuart0","r+")
-	port3.write(start_flag)
 	port1.write(start_flag)
 	port0.write(start_flag)
 	while True:
 		rlist,wlist,elist=select.select([fd0,fd1,fd3,],[],[],)
 		for fd in rlist:
 			if(fd==fd3):
-#				lock.acquire()
-#				try:
 				send_buf3=''
 				send_buf3=uart_rec_int(port3)	
 				flag=flag|0x0001			
-#				finally:
-#					lock.release() 
 			if(fd==fd1):
 				send_buf1=""
 				send_buf1=uart_rec_str(port1)
@@ -157,17 +178,38 @@ def data_recev(port0,port1,port3,q_socket):
 #							p=multiprocessing.Process(target=data_write,args=(data_buf_20_3,))
 #							p.start()
 #						times=0		
-#			
+#				
 		if(sendflag==0x11):
 			sendflag = 0
 			save_buf0=send_buf0.split("$")
 			save_buf1=send_buf1.split("$")
-#			sock_buf="S"+save_buf0[0]+save_buf1[0]+",P,"+save_buf0[1]+","+save_buf1[1]+",E,"+save_buf0[2]+save_buf1[2]+'M'+send_buf3+',+'"e\r\n"
+			sock_buf="S"+save_buf0[0]+save_buf1[0]+",P,"+save_buf0[1]+","+save_buf1[1]+",E,"+save_buf0[2]+save_buf1[2]+"e\r\n"
 #			sock_buf="S"+save_buf0[0]+save_buf1[0]+',M,'+send_buf3+','+"e\r\n"
-			sock_buf="S"+save_buf0[0]+save_buf1[0]+",e\r\n"
-#			sock_buf="S"+save_buf1[0]+",e\r\n"
 			if q_socket.empty() == True:
 				q_socket.put(sock_buf)
+			if not q_sensor.empty():
+				back_sensor = q_sensor.get()
+				back_H = (back_sensor&0xff00)>>8
+				back_L = (back_sensor&0xff)
+				lis0 = save_buf0[0].split(',')
+				lis1 = save_buf1[0].split(',')
+				left_leg_H = (int(lis0[1])&0xff00)>>8
+				left_leg_L = (int(lis0[1])&0xff)
+				left_thigh_H = (int(lis0[3])&0xff00)>>8
+				left_thigh_L = (int(lis0[3])&0xff)
+				right_leg_H = (int(lis1[1])&0xff00)>>8
+				right_leg_L = (int(lis1[1])&0xff)
+				right_thigh_H = (int(lis1[3])&0xff00)>>8
+				right_thigh_L = (int(lis1[3])&0xff)
+				sensor_list = ['start',chr(left_leg_H),chr(left_leg_L),chr(left_thigh_H),chr(left_thigh_L),
+											chr(right_leg_H),chr(right_leg_L),chr(right_thigh_H),chr(right_thigh_L),
+											chr(back_H),chr(back_L),'#']
+				print sensor_list
+				sensor_buf = ''.join(sensor_list)
+				port3.write(sensor_buf)
+#				sensor_buf = start_flag+chr(left_leg_H)+chr(left_leg_L)+chr(left_thigh_H)+chr(left_thigh_L)+\
+#										 chr(right_leg_H)+chr(right_leg_L)+chr(right_thigh_H)+chr(right_thigh_L)+\
+#										 chr(back_H)+chr(back_L)+'#'				
 		time.sleep(0.01)	
 #		if(i==1):
 #			port1.write(stop_flag)
@@ -305,17 +347,47 @@ def sock_server(q_socket):
 #			except:
 #				c.close() 	# 关闭连接
 #				break               
-	
+
+###############获取背部传感器数据的值#################################
+def get_sensor(port):
+	error = 0
+	try:
+		time.sleep(1)
+		data_sum = 0
+		port.flushInput()
+		send_buf=''
+		send_buf=uart_sensor_data(port)
+		for i in range(10):
+			data_sum = data_sum+ord(send_buf[i])
+		if data_sum&0xff == ord(send_buf[10]):
+			sensor = int((ord(send_buf[3])<<8|ord(send_buf[2]))/32768.0*180)
+			port.close()
+			return sensor
+	except IndexError, error:		
+		print error
+		return 0
+##########################获得正确的值后将值放入队列中################
+def sensor(port,q_sensor):
+	sensor_data = 0
+	while(sensor_data == 0):
+		sensor_data = get_sensor(port)
+		print sensor_data
+	if q_sensor.empty() ==True:			
+		q_sensor.put(sensor_data)
+		print 'ok'
+		time.sleep(5)
+
 	
 i=0
-key_statue=True
-key_flag=False	 
+key_statue = True
+key_flag = False 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(22,GPIO.OUT) #喇叭
 GPIO.setup(5,GPIO.OUT) #LED
 GPIO.setup(17,GPIO.IN) #按键
 port0=serial.Serial("/dev/myuart0",baudrate=115200,timeout=0)
 port1=serial.Serial("/dev/myuart1",baudrate=115200,timeout=0)
+port2=serial.Serial("/dev/myuart2",baudrate=115200,timeout=0)
 port3=serial.Serial("/dev/myuart3",baudrate=115200,timeout=0)
 #fd1=open("/scream/upload/data.txt","a+")
 #fd1.close()
@@ -332,9 +404,12 @@ port3=serial.Serial("/dev/myuart3",baudrate=115200,timeout=0)
 #	download()
 #GPIO.output(5,1)
 q_socket = multiprocessing.Queue()
+q_sensor = multiprocessing.Queue()
 p_recv = multiprocessing.Process(target=data_recev,args=(port0,port1,port3,q_socket,))
 p_sock = multiprocessing.Process(target=sock_server,args=(q_socket,))
+p_sensor = multiprocessing.Process(target=sensor,args=(port2,q_sensor,))
 p_recv.start()
+p_sensor.start()
 p_sock.start()
 #wifi = pywifi.PyWiFi()
 #iface = wifi.interfaces()[0]
@@ -371,4 +446,3 @@ except (KeyboardInterrupt,AssertionError):
 	GPIO.cleanup(5)
 	port1.write("stop")
 	port0.write("stop")
-	port3.write("stop")
